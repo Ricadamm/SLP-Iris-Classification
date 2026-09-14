@@ -1,34 +1,49 @@
-import openpyxl
+import numpy as np
 import matplotlib.pyplot as plt
+import openpyxl
 
-wb = openpyxl.load_workbook('SetosaVersicolor(2).xlsx', data_only=True)
+# Load data from the Excel "Data" sheet
+wb = openpyxl.load_workbook('SetosaVersicolor_AdamRizky.xlsx', data_only=True)
+ws = wb['Data']
+X = np.array([[ws.cell(r, c).value for c in range(1, 5)] for r in range(1, 101)])
+y = np.array([0.0]*50 + [1.0]*50)   # rows 1-50 = Setosa, 51-100 = Versicolor
 
-def get_metrics(sheet, start_row):
-    ws = wb[sheet]
-    epochs, correct, total, sse = [], 0, 0, 0.0
-    for r in range(start_row, ws.max_row + 1):
-        if ws.cell(r, 1).value and 'epoch' in str(ws.cell(r, 1).value).lower():
-            if total > 0:
-                epochs.append((correct/total*100, sse/total))
-            correct, total, sse = 0, 0, 0.0
-        t, p, s = ws.cell(r,7).value, ws.cell(r,16).value, ws.cell(r,18).value
-        if t is not None and p is not None and s is not None:
-            total += 1
-            correct += int(p) == int(t)
-            sse += float(s)
-    if total > 0:
-        epochs.append((correct/total*100, sse/total))
-    return epochs
+# Split: first 40 of each class = train, last 10 = validation
+train_x = np.vstack([X[:40], X[50:90]])
+train_y = np.concatenate([y[:40], y[50:90]])
+val_x = np.vstack([X[40:50], X[90:100]])
+val_y = np.concatenate([y[40:50], y[90:100]])
 
-train = get_metrics('Training Data', 5)
-val = get_metrics('Validation Data', 4)
-x = list(range(1, len(train)+1))
+# SLP settings
+lr = 0.1
+bias = 0.5
+w = np.full(4, 0.5)
+train, val = [], []
 
+for epoch in range(5):
+    correct, sse = 0, 0.0
+    for x, t in zip(train_x, train_y):
+        g = 1 / (1 + np.exp(-(bias + w @ x)))
+        err = g - t
+        sse += err ** 2
+        correct += (round(g) == t)
+        grad = 2 * err * g * (1 - g)
+        bias -= lr * grad
+        w -= lr * grad * x
+    train.append((correct / 80 * 100, sse / 80))
+
+    vg = np.array([1 / (1 + np.exp(-(bias + w @ x))) for x in val_x])
+    val.append((np.mean(np.round(vg) == val_y) * 100, np.mean((vg - val_y) ** 2)))
+
+    print(f"Epoch {epoch+1}: Train Acc={train[-1][0]:.1f}% Loss={train[-1][1]:.4f} | Val Acc={val[-1][0]:.1f}% Loss={val[-1][1]:.4f}")
+
+# Plot
+x = list(range(1, 6))
 for i, (title, yi, ylabel) in enumerate([
     ('Accuracy Chart', 0, 'Accuracy (%)'),
     ('Loss Chart', 1, 'Loss (Mean SSE)')
 ]):
-    plt.figure(figsize=(8,5))
+    plt.figure(figsize=(8, 5))
     plt.plot(x, [e[yi] for e in train], 'b-o', label='Training')
     plt.plot(x, [e[yi] for e in val], 'r-o', label='Validation')
     plt.xlabel('Epoch')
